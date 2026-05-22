@@ -6,27 +6,47 @@ import re
 from PIL import Image, ImageEnhance
 import easyocr
 import pyproj
-import ctypes # Thư viện gọi hộp thoại hệ thống Windows
+
+# Chuỗi cấu hình VN2000 Khánh Hòa (KTT 108.25, Múi 3 độ) đã tối ưu
+VN2000_KH_CALIBRATED = (
+    "+proj=tmerc +lat_0=0 +lon_0=108.25 +k=0.9999 +x_0=500000 +y_0=0 +ellps=WGS84 "
+    "+towgs84=-357.3914,436.3274,-1.4739,0,0,0,0 +units=m +no_defs"
+)
+WGS84_PROJ4 = "epsg:4326"
+
+transformer = pyproj.Transformer.from_crs(VN2000_KH_CALIBRATED, WGS84_PROJ4, always_xy=True)
+
+# 1. Cấu hình giao diện Streamlit trước
+st.set_page_config(page_title="VN2000 sang KML - Tác giả: Nguyễn Ngô Bá Toàn", layout="wide")
 
 # ==============================================================================
-# THIẾT LẬP CẢNH BÁO BẢN QUYỀN KHI MỞ CHƯƠNG TRÌNH
+# THIẾT LẬP CẢNH BÁO BẢN QUYỀN CHUẨN WEB (Tương thích Windows, Linux, Điện thoại)
 # ==============================================================================
+@st.dialog("⚠️ CẢNH BÁO BẢN QUYỀN ỨNG DỤNG")
 def show_copyright_warning():
-    # Kiểm tra nếu chưa hiển thị cảnh báo trong phiên làm việc hiện tại
-    if 'warning_shown' not in st.session_state:
-        title = "CẢNH BÁO BẢN QUYỀN ỨNG DỤNG"
-        message = (
-            "Chương trình này được nghiên cứu và phát triển bởi:\n\n"
-            "NGUYỄN NGÔ BÁ TOÀN\n"
-            "Chuyên viên Sở Xây dựng tỉnh Khánh Hòa.\n\n"
-            "Góp ý xin liên hệ: ba.toan987@gmail.com"
-        )
-        # Gọi hộp thoại cảnh báo chuẩn Windows (0x30 là biểu tượng Warning dấu chấm than)
-        ctypes.windll.user32.MessageBoxW(0, message, title, 0x30)
-        st.session_state['warning_shown'] = True
+    st.warning("⚠️ **THÔNG BÁO QUAN TRỌNG VỀ BẢN QUYỀN MÃ NGUỒN**")
+    st.markdown("""
+    Chương trình này được nghiên cứu và phát triển bởi:
+    
+    **NGUYỄN NGÔ BÁ TOÀN**
+    *Chuyên viên Sở Xây dựng tỉnh Khánh Hòa.*
+    
+    *Góp ý xin gửi về Email: Ba.toan987@gmail.com*
+    """)
+    if st.button("Tôi Đã Hiểu & Đồng Ý", type="primary"):
+        st.rerun()
 
-# Kích hoạt cảnh báo ngay khi bắt đầu load trang
-show_copyright_warning()
+# Kiểm tra nếu chưa hiển thị cảnh báo trong phiên làm việc hiện tại thì tự động bật Pop-up lên
+if 'warning_shown' not in st.session_state:
+    st.session_state['warning_shown'] = True
+    show_copyright_warning()
+# ==============================================================================
+
+st.title("📍 Ứng Dụng Xuất Tọa Độ VN2000 Sang KML (Khánh Hòa)")
+st.caption("Chương trình phát triển bởi: Nguyễn Ngô Bá Toàn - Chuyên viên Sở Xây dựng Khánh Hòa")
+st.markdown("---")
+
+
 # ==============================================================================
 
 # Chuỗi cấu hình VN2000 Khánh Hòa (KTT 108.25, Múi 3 độ) đã tối ưu

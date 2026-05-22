@@ -1,0 +1,7 @@
+streamlit
+pandas
+simplekml
+numpy
+Pillow
+easyocr
+pyproj

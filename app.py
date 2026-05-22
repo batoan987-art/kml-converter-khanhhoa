@@ -22,11 +22,11 @@ st.set_page_config(page_title="VN2000 sang KML - Tác giả: Nguyễn Ngô Bá T
 # ==============================================================================
 # THIẾT LẬP CẢNH BÁO BẢN QUYỀN CHUẨN WEB (Tương thích Windows, Linux, Điện thoại)
 # ==============================================================================
-@st.dialog("⚠️ CẢNH BÁO BẢN QUYỀN ỨNG DỤNG")
+@st.dialog("⚠️")
 def show_copyright_warning():
-    st.warning("⚠️ **THÔNG BÁO QUAN TRỌNG VỀ BẢN QUYỀN MÃ NGUỒN**")
+    st.warning("⚠️ **THÔNG BÁO**")
     st.markdown("""
-    Chương trình này được nghiên cứu và phát triển bởi:
+    Chương trình được phát triển bởi:
     
     **NGUYỄN NGÔ BÁ TOÀN**
     *Chuyên viên Sở Xây dựng tỉnh Khánh Hòa.*

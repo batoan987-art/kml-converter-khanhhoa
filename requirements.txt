@@ -5,3 +5,4 @@ numpy
 Pillow
 easyocr
 pyproj
+openpyxl

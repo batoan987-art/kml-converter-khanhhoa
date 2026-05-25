@@ -110,7 +110,8 @@ if input_method == "📂 Nhập từ File Excel (.xlsx, .xls)":
             st.error(f"🚨 Lỗi cấu trúc tệp Excel không đọc được: {e}")
 
 # ==============================================================================
-# 5. LUỒNG XỬ LÝ HÌNH ẢNH OCR (CHỈ HIỆN KHI ĐƯỢC CHỌN)
+# ==============================================================================
+# 5. LUỒNG XỬ LÝ HÌNH ẢNH OCR CHUYÊN DỤNG (ĐÃ KHỬ NHIỄU ĐƯỜNG ĐỨT NÉT VÀ LỆCH DÒNG)
 # ==============================================================================
 else:
     st.subheader("📷 Khu vực tải lên Hình ảnh")
@@ -120,7 +121,7 @@ else:
         if len(uploaded_images) > 10:
             st.error("🚨 Vui lòng chỉ chọn tối đa 10 hình ảnh cùng lúc.")
         else:
-            with st.spinner("Đang khởi động bộ xử lý hình ảnh OCR nâng cao..."):
+            with st.spinner("Đang khởi động bộ xử lý hình ảnh thông minh..."):
                 reader = load_ocr_model()
                 
             for idx, file in enumerate(uploaded_images):
@@ -128,64 +129,59 @@ else:
                     orig_img = Image.open(file)
                     processed_img = preprocess_image(orig_img)
                     img_np = np.array(processed_img)
-                    h, w = img_np.shape[:2]
                     
-                    st.write("🔍 *Đang phân tích cấu trúc ô bảng...*")
+                    st.write("🔍 *Đang bóc tách văn bản và tự động căn chỉnh dòng...*")
                     
-                    slice_height = 400  
-                    overlap = 120       
-                    raw_lines = {}
-                    y_start = 0
+                    # Đọc toàn bộ văn bản trên ảnh mà không cắt lát để giữ nguyên ngữ cảnh hàng
+                    ocr_results = reader.readtext(img_np, detail=1, paragraph=False)
                     
-                    while y_start < h:
-                        y_end = min(y_start + slice_height, h)
-                        img_slice = img_np[y_start:y_end, :]
+                    raw_data = []
+                    for (bbox, text, prob) in ocr_results:
+                        # Khử nhiễu các ký tự sinh ra do đường kẻ đứt nét hoặc chấm mờ
+                        clean_text = text.strip()
+                        if prob > 0.25 and len(clean_text) > 0 and not re.match(r'^[\s._,-]+$', clean_text):
+                            y_center = int((bbox[0][1] + bbox[2][1]) / 2)
+                            x_start = bbox[0][0]
+                            raw_data.append({'x': x_start, 'y': y_center, 'text': clean_text})
+                    
+                    if raw_data:
+                        # Tạo DataFrame để xử lý nhóm dòng thông minh bằng Pandas
+                        df_raw = pd.DataFrame(raw_data)
                         
-                        slice_results = reader.readtext(
-                            img_slice, detail=1, paragraph=False, 
-                            contrast_ths=0.1, low_text=0.25, text_threshold=0.6
-                        )
+                        # Sắp xếp theo chiều dọc (y) trước
+                        df_raw = df_raw.sort_values(by='y').reset_index(drop=True)
                         
-                        for (bbox, text, prob) in slice_results:
-                            if prob > 0.20:  
-                                actual_y_center = int((bbox[0][1] + bbox[2][1]) / 2) + y_start
-                                actual_x_start = bbox[0][0]
+                        # Thuật toán nhóm các phần tử có khoảng cách chiều dọc sát nhau (chấp nhận ảnh nghiêng)
+                        df_raw['group'] = (df_raw['y'].diff() > 15).cumsum()
+                        
+                        # Duyệt qua từng dòng sau khi đã nhóm thành công
+                        for group_id, group_df in df_raw.groupby('group'):
+                            # Sắp xếp các từ trong cùng một dòng từ trái sang phải
+                            sorted_row = group_df.sort_values(by='x')
+                            row_texts = sorted_row['text'].tolist()
+                            
+                            if len(row_texts) >= 3:
+                                # Lọc ra các chuỗi có dáng dấp của tọa độ (chứa nhiều hơn 4 chữ số)
+                                numbers = [t for t in row_texts if len(re.sub(r'[^\d]', '', t)) >= 5]
                                 
-                                matched_line = None
-                                for existing_y in raw_lines.keys():
-                                    if abs(existing_y - actual_y_center) < 10:
-                                        matched_line = existing_y
-                                        break
-                                
-                                if matched_line is not None:
-                                    if not any(text == t for _, t in raw_lines[matched_line]):
-                                        raw_lines[matched_line].append((actual_x_start, text))
-                                else:
-                                    raw_lines[actual_y_center] = [(actual_x_start, text)]
+                                if len(numbers) >= 2:
+                                    pt_name = row_texts[0].strip()
                                     
-                        y_start += (slice_height - overlap)
-                    
-                    for y in sorted(raw_lines.keys()):
-                        sorted_row = sorted(raw_lines[y], key=lambda x: x[0])
-                        row_texts = [item[1] for item in sorted_row]
-                        
-                        if len(row_texts) >= 3:
-                            numbers = [t for t in row_texts if len(re.sub(r'[^\d]', '', t)) >= 5]
-                            if len(numbers) >= 2:
-                                pt_name = row_texts[0].strip()
-                                x_raw = clean_num_str(numbers[0])
-                                y_raw = clean_num_str(numbers[1])
-                                
-                                if pt_name.upper() != 'STT' and not pt_name.upper().startswith('X') and not pt_name.upper().startswith('Y'):
-                                    if not any(p['Tên Điểm'] == pt_name and p['X (Northing)'] == x_raw for p in all_detected_points):
-                                        all_detected_points.append({
-                                            "Tên Điểm": pt_name,
-                                            "X (Northing)": x_raw,
-                                            "Y (Easting)": y_raw,
-                                            "Nguồn dữ liệu": "Hình ảnh OCR"
-                                        })
-                    st.write(f"✅ Bóc tách hoàn tất file ảnh: `{file.name}`")
-
+                                    # Ép lấy 2 cụm số cuối cùng làm X và Y đề phòng text tiêu đề dính vào
+                                    x_raw = clean_num_str(numbers[-2])
+                                    y_raw = clean_num_str(numbers[-1])
+                                    
+                                    # Loại bỏ dòng tiêu đề bảng (STT, X, Y, Tên điểm...)
+                                    if not any(k in pt_name.upper() for k in ['STT', 'X (', 'Y (', 'NORTH', 'EAST']):
+                                        if not any(p['Tên Điểm'] == pt_name and p['X (Northing)'] == x_raw for p in all_detected_points):
+                                            all_detected_points.append({
+                                                "Tên Điểm": pt_name,
+                                                "X (Northing)": x_raw,
+                                                "Y (Easting)": y_raw,
+                                                "Nguồn dữ liệu": "Hình ảnh OCR"
+                                            })
+                                            
+                    st.write(f"✅ Đã xử lý xong ảnh: `{file.name}`")
 # ==============================================================================
 # 6. BẢNG BIÊN TẬP VÀ XUẤT FILE KML CHUNG
 # ==============================================================================

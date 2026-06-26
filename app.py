@@ -158,7 +158,7 @@ else:
                         
                         try:
                             # Sử dụng mô hình gemini-1.5-flash để bóc tách dữ liệu cực nhanh và chuẩn
-                            model = genai.GenerativeModel('gemini-1.5-flash')
+                            model = genai.GenerativeModel('gemini-2.5-flash')
                             
                             # Gửi ảnh và prompt trực tiếp lên Cloud xử lý
                             response = model.generate_content([prompt, pil_img])

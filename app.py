@@ -19,7 +19,7 @@ WGS84_PROJ4 = "epsg:4326"
 transformer = pyproj.Transformer.from_crs(VN2000_KH_CALIBRATED, WGS84_PROJ4, always_xy=True)
 
 # Cấu hình trang Streamlit
-st.set_page_config(page_title="VN2000 sang KML - Khóa Nhập Đồng Thời", layout="wide")
+st.set_page_config(page_title="VN2000 sang KML", layout="wide")
 
 # ==============================================================================
 # 2. THIẾT LẬP CẢNH BÁO BẢN QUYỀN CHUẨN WEB
@@ -60,13 +60,13 @@ def preprocess_image(pil_img):
 # 3. GIAO DIỆN CHÍNH - BỘ CHỌN PHƯƠNG THỨC ĐỘC QUYỀN
 # ==============================================================================
 st.title("📍 Ứng Dụng Xuất Tọa Độ VN2000 Sang KML (Khánh Hòa)")
-st.caption("Hệ thống đã khóa tính năng nhập đồng thời - Vui lòng chọn 1 trong 2 phương thức dưới đây")
+st.caption("Vui lòng chọn 1 trong 2 phương thức dưới đây")
 st.markdown("---")
 
 # Bộ nút bấm chọn nguồn dữ liệu (Chỉ được chọn 1 trong 2)
 input_method = st.radio(
     "👉 **CHỌN NGUỒN DỮ LIỆU ĐẦU VÀO:**",
-    ["📂 Nhập từ File Excel (.xlsx, .xls)", "📷 Nhập từ Hình ảnh (Quét OCR)"],
+    ["📂 Nhập từ File Excel (.xlsx, .xls)", "📷 Nhập từ Hình ảnh"],
     index=0,
     horizontal=True
 )
@@ -115,7 +115,7 @@ if input_method == "📂 Nhập từ File Excel (.xlsx, .xls)":
 # 5. LUỒNG XỬ LÝ HÌNH ẢNH OCR CHUYÊN DỤNG (ĐÃ KHỬ NHIỄU ĐƯỜNG ĐỨT NÉT VÀ LỆCH DÒNG)
 # ==============================================================================
 else:
-    st.subheader("📷 Khu vực tải lên Hình ảnh (Sử dụng trí tuệ nhân tạo Google)")
+    st.subheader("📷 Khu vực tải lên Hình ảnh")
     
     # Người dùng nhập cấu hình API Key trực tiếp trên giao diện để bảo mật
     gemini_api_key = st.sidebar.text_input("🔑 Nhập Google API Key:", type="password")

@@ -6,6 +6,7 @@ import re
 from PIL import Image, ImageEnhance
 import easyocr
 import pyproj
+import google.generativeai as genai
 
 # ==============================================================================
 # 1. CẤU HÌNH HỆ TỌA ĐỘ VN2000 KHÁNH HÒA

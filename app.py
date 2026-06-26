@@ -1,3 +1,4 @@
+pip install -U google-generativeai
 import streamlit as st
 import pandas as pd
 import simplekml
@@ -114,74 +115,82 @@ if input_method == "📂 Nhập từ File Excel (.xlsx, .xls)":
 # 5. LUỒNG XỬ LÝ HÌNH ẢNH OCR CHUYÊN DỤNG (ĐÃ KHỬ NHIỄU ĐƯỜNG ĐỨT NÉT VÀ LỆCH DÒNG)
 # ==============================================================================
 else:
-    st.subheader("📷 Khu vực tải lên Hình ảnh")
+    st.subheader("📷 Khu vực tải lên Hình ảnh (Sử dụng trí tuệ nhân tạo Google)")
+    
+    # Người dùng nhập cấu hình API Key trực tiếp trên giao diện để bảo mật
+    gemini_api_key = st.sidebar.text_input("🔑 Nhập Google API Key:", type="password")
+    
     uploaded_images = st.file_uploader("Tải lên các hình ảnh bảng tọa độ (Tối đa 10 ảnh)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
     
     if uploaded_images:
-        if len(uploaded_images) > 10:
+        if not gemini_api_key:
+            st.error("🚨 Vui lòng nhập Google API Key ở thanh bên (Sidebar) để kích hoạt tính năng nhận diện AI nâng cao.")
+        elif len(uploaded_images) > 10:
             st.error("🚨 Vui lòng chỉ chọn tối đa 10 hình ảnh cùng lúc.")
         else:
-            with st.spinner("Đang khởi động bộ xử lý hình ảnh thông minh..."):
-                reader = load_ocr_model()
-                
-            for idx, file in enumerate(uploaded_images):
-                with st.expander(f"📷 Đang bóc tách dữ liệu cho Ảnh {idx+1}: {file.name}", expanded=True):
-                    orig_img = Image.open(file)
-                    processed_img = preprocess_image(orig_img)
-                    img_np = np.array(processed_img)
-                    
-                    st.write("🔍 *Đang bóc tách văn bản và tự động căn chỉnh dòng...*")
-                    
-                    # Đọc toàn bộ văn bản trên ảnh mà không cắt lát để giữ nguyên ngữ cảnh hàng
-                    ocr_results = reader.readtext(img_np, detail=1, paragraph=False)
-                    
-                    raw_data = []
-                    for (bbox, text, prob) in ocr_results:
-                        # Khử nhiễu các ký tự sinh ra do đường kẻ đứt nét hoặc chấm mờ
-                        clean_text = text.strip()
-                        if prob > 0.25 and len(clean_text) > 0 and not re.match(r'^[\s._,-]+$', clean_text):
-                            y_center = int((bbox[0][1] + bbox[2][1]) / 2)
-                            x_start = bbox[0][0]
-                            raw_data.append({'x': x_start, 'y': y_center, 'text': clean_text})
-                    
-                    if raw_data:
-                        # Tạo DataFrame để xử lý nhóm dòng thông minh bằng Pandas
-                        df_raw = pd.DataFrame(raw_data)
+            # Cấu hình API Google
+            genai.configure(api_key=gemini_api_key)
+            
+            with st.spinner("Đang kết nối bộ xử lý hình ảnh thông minh Google Gemini..."):
+                for idx, file in enumerate(uploaded_images):
+                    with st.expander(f"📷 Đang bóc tách dữ liệu cho Ảnh {idx+1}: {file.name}", expanded=True):
                         
-                        # Sắp xếp theo chiều dọc (y) trước
-                        df_raw = df_raw.sort_values(by='y').reset_index(drop=True)
+                        # Đọc ảnh trực tiếp sang định dạng Pillow
+                        pil_img = Image.open(file)
                         
-                        # Thuật toán nhóm các phần tử có khoảng cách chiều dọc sát nhau (chấp nhận ảnh nghiêng)
-                        df_raw['group'] = (df_raw['y'].diff() > 15).cumsum()
+                        # Thiết lập Prompt tối ưu cho cấu hình số liệu trắc địa VN2000
+                        prompt = """
+                        Bạn là một chuyên gia trắc địa có nhiệm vụ trích xuất bảng số liệu từ hình ảnh.
+                        Hãy đọc bảng dữ liệu và trả về kết quả dưới dạng cấu trúc JSON duy nhất theo định dạng mảng (Array).
+                        Không thêm bất kỳ lời giải thích nào, chỉ trả về chuỗi JSON thô (Raw JSON).
+
+                        Yêu cầu xử lý số liệu:
+                        1. Phân tách rõ ràng các cột: Tên điểm/Mốc (STT), Tọa độ X, Tọa độ Y.
+                        2. Giữ nguyên dấu chấm thập phân gốc của số liệu (Ví dụ: 1351954.66). 
+                        3. Nếu số liệu bị mờ hoặc nhận diện có ký tự lạ, hãy dựa vào logic dãy số xung quanh để hiệu chỉnh cho đúng định dạng số thực.
+
+                        Cấu trúc mẫu mong muốn:
+                        [
+                          {"Tên Điểm": "N1", "X (Northing)": "1352140.64", "Y (Easting)": "598001.90"},
+                          {"Tên Điểm": "N2", "X (Northing)": "1352145.17", "Y (Easting)": "598009.40"}
+                        ]
+                        """
                         
-                        # Duyệt qua từng dòng sau khi đã nhóm thành công
-                        for group_id, group_df in df_raw.groupby('group'):
-                            # Sắp xếp các từ trong cùng một dòng từ trái sang phải
-                            sorted_row = group_df.sort_values(by='x')
-                            row_texts = sorted_row['text'].tolist()
+                        try:
+                            # Sử dụng mô hình gemini-1.5-flash để bóc tách dữ liệu cực nhanh và chuẩn
+                            model = genai.GenerativeModel('gemini-1.5-flash')
                             
-                            if len(row_texts) >= 3:
-                                # Lọc ra các chuỗi có dáng dấp của tọa độ (chứa nhiều hơn 4 chữ số)
-                                numbers = [t for t in row_texts if len(re.sub(r'[^\d]', '', t)) >= 5]
+                            # Gửi ảnh và prompt trực tiếp lên Cloud xử lý
+                            response = model.generate_content([prompt, pil_img])
+                            
+                            # Làm sạch kết quả trả về để ép kiểu JSON định dạng
+                            raw_text = response.text.strip()
+                            clean_json_str = re.sub(r'```json|```', '', raw_text).strip()
+                            
+                            import json
+                            detected_data = json.loads(clean_json_str)
+                            
+                            # Lưu dữ liệu bóc tách được vào danh sách tổng của Streamlit
+                            for item in detected_data:
+                                # Chuẩn hóa lại chuỗi số một lần nữa trước khi nạp vào hệ thống
+                                x_cleaned = clean_num_str(str(item.get("X (Northing)", "")))
+                                y_cleaned = clean_num_str(str(item.get("Y (Easting)", "")))
+                                pt_name = str(item.get("Tên Điểm", "")).strip()
                                 
-                                if len(numbers) >= 2:
-                                    pt_name = row_texts[0].strip()
-                                    
-                                    # Ép lấy 2 cụm số cuối cùng làm X và Y đề phòng text tiêu đề dính vào
-                                    x_raw = clean_num_str(numbers[-2])
-                                    y_raw = clean_num_str(numbers[-1])
-                                    
-                                    # Loại bỏ dòng tiêu đề bảng (STT, X, Y, Tên điểm...)
-                                    if not any(k in pt_name.upper() for k in ['STT', 'X (', 'Y (', 'NORTH', 'EAST']):
-                                        if not any(p['Tên Điểm'] == pt_name and p['X (Northing)'] == x_raw for p in all_detected_points):
-                                            all_detected_points.append({
-                                                "Tên Điểm": pt_name,
-                                                "X (Northing)": x_raw,
-                                                "Y (Easting)": y_raw,
-                                                "Nguồn dữ liệu": "Hình ảnh OCR"
-                                            })
-                                            
-                    st.write(f"✅ Đã xử lý xong ảnh: `{file.name}`")
+                                if pt_name and x_cleaned and y_cleaned:
+                                    # Tránh nạp trùng lặp mốc
+                                    if not any(p['Tên Điểm'] == pt_name and p['X (Northing)'] == x_cleaned for p in all_detected_points):
+                                        all_detected_points.append({
+                                            "Tên Điểm": pt_name,
+                                            "X (Northing)": x_cleaned,
+                                            "Y (Easting)": y_cleaned,
+                                            "Nguồn dữ liệu": f"Gemini AI ({file.name})"
+                                        })
+                                        
+                            st.write(f"✅ Đã xử lý xong ảnh bằng AI: `{file.name}`")
+                            
+                        except Exception as e:
+                            st.error(f"🚨 Lỗi khi xử lý ảnh qua AI Google: {e}")
 # ==============================================================================
 # 6. BẢNG BIÊN TẬP VÀ XUẤT FILE KML CHUNG
 # ==============================================================================
